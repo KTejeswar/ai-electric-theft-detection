@@ -30,24 +30,42 @@ To address this:
 ```
 
 Smart Meter Data (3-min intervals)
+
 ↓
+
 Data Aggregation (Daily Consumption)
+
 ↓
+
 Data Preprocessing
+
 ↓
+
 Feature Engineering (Behavior Patterns)
+
 ↓
+
 Simulated Theft Generation
+
 ↓
+
 ┌───────────────────────┬───────────────────────┐
+
 │                       │
-Supervised Models       Anomaly Detection
-(RandomForest, XGBoost) (Isolation Forest, LOF)
+Supervised Models                     Anomaly Detection
+
+(RandomForest, XGBoost)             (Isolation Forest, LOF)
+
 │                       │
+
 └────────── Ensemble Decision ───────────┘
+
 ↓
+
 Normal / Suspicious / High Risk
+
 ↓
+
 Streamlit Dashboard
 
 ```
