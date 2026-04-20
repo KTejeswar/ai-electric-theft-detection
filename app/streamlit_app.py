@@ -283,76 +283,57 @@ def load_models():
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PREDICTION PIPELINE
-# ─────────────────────────────────────────────────────────────────────────────
-# def run_pipeline(df_raw, rf, xgb, iso, lof, sc, threshold):
-#     df = df_raw.copy()
-#     for c in FEATURE_COLS:
-#         if c not in df.columns:
-#             df[c] = 0
-#     X = df[FEATURE_COLS]
-
-#     rf_p  = rf.predict_proba(X)[:, 1]
-#     xgb_p = xgb.predict_proba(X)[:, 1]
-#     ens_p = (rf_p + xgb_p) / 2
-#     sup   = (ens_p >= threshold).astype(int)
-
-#     Xs    = sc.transform(X)
-#     iso_f = (iso.predict(Xs) == -1).astype(int)
-#     lof_f = (lof.predict(Xs) == -1).astype(int)
-#     anom  = ((iso_f + lof_f) >= 1).astype(int)
-
-#     labels = []
-#     for s, a in zip(sup, anom):
-#         if   s == 1 and a == 1: labels.append("HIGH RISK")
-#         elif s == 1 or  a == 1: labels.append("SUSPICIOUS")
-#         else:                   labels.append("NORMAL")
-
-#     df["fraud_prob"] = ens_p
-#     df["iso_flag"]   = iso_f
-#     df["lof_flag"]   = lof_f
-#     df["anom_flag"]  = anom
-#     df["risk_level"] = labels
-#     return df
 
 def run_pipeline(df_raw, rf, xgb, iso, lof, sc, threshold):
     df = df_raw.copy()
+
     for c in FEATURE_COLS:
         if c not in df.columns:
             df[c] = 0
+
     X = df[FEATURE_COLS]
 
     # --- model signals ---
-    rf_p   = rf.predict_proba(X)[:, 1]
-    xgb_p  = xgb.predict_proba(X)[:, 1]
-    ens_p  = (rf_p + xgb_p) / 2
+    rf_probs  = rf.predict_proba(X)[:, 1]
+    xgb_probs = xgb.predict_proba(X)[:, 1]
+    ens_probs = (rf_probs + xgb_probs) / 2
 
-    Xs     = sc.transform(X)
-    iso_f  = (iso.predict(Xs) == -1).astype(int)
-    lof_f  = (lof.predict(Xs) == -1).astype(int)
+    X_scaled = sc.transform(X)
+    iso_flag = (iso.predict(X_scaled) == -1).astype(int)
+    lof_flag = (lof.predict(X_scaled) == -1).astype(int)
 
     # --- feature signals ---
-    zero_flag    = (X["zero_pct"]       >= 0.5).astype(int).values
-    extreme_flag = (
-        (X["max_low_streak"] >= 16) | (X["cv"] >= 4.0)
-    ).astype(int).values
+    zero_flag   = (X["zero_pct"] >= 0.5).astype(int).values
+    streak_flag = (X["max_low_streak"] >= 16).astype(int).values
+    cv_flag     = (X["cv"] >= 4.0).astype(int).values
+    extreme_flag = ((streak_flag + cv_flag) >= 1).astype(int)
 
-    # --- confidence score ---
-    labels = []
+    # --- NEW BALANCED SCORING ---
     scores = []
-    for prob, i, l, z, e in zip(ens_p, iso_f, lof_f, zero_flag, extreme_flag):
+    labels = []
+
+    for p, i, l, z, e in zip(ens_probs, iso_flag, lof_flag, zero_flag, extreme_flag):
         score = 0
-        if prob >= 0.6:
+
+        # --- supervised (primary) ---
+        if p >= 0.7:
             score += 2
-        elif prob >= 0.4:
+        elif p >= 0.5:
             score += 1
+
+        # --- anomaly (weak signal) ---
         if i == 1 and l == 1:
-            score += 2
-        elif i == 1 or l == 1:
             score += 1
-        score += int(z)
-        score += int(e)
-        score = min(score, 5)
+
+        # --- feature support ---
+        if z == 1:
+            score += 1
+        if e == 1:
+            score += 1
+
         scores.append(score)
+
+        # --- final decision ---
         if score >= 4:
             labels.append("HIGH RISK")
         elif score >= 2:
@@ -360,13 +341,13 @@ def run_pipeline(df_raw, rf, xgb, iso, lof, sc, threshold):
         else:
             labels.append("NORMAL")
 
-    df["fraud_prob"]  = ens_p
-    df["iso_flag"]    = iso_f
-    df["lof_flag"]    = lof_f
-    df["confidence"]  = scores
-    df["risk_level"]  = labels
-    return df
+    df["fraud_prob"] = ens_probs
+    df["iso_flag"]   = iso_flag
+    df["lof_flag"]   = lof_flag
+    df["confidence"] = scores
+    df["risk_level"] = labels
 
+    return df
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPER — status badge HTML
 # ─────────────────────────────────────────────────────────────────────────────
@@ -382,7 +363,12 @@ def badge(status):
 # HELPER — one-line table finding
 # ─────────────────────────────────────────────────────────────────────────────
 def short_finding(meter_data, status):
+    flagged = (meter_data["risk_level"] != "NORMAL").sum()
+    total = len(meter_data)
+
     if status == "NORMAL":
+        if flagged > 0:
+            return f"{flagged} minor irregular windows (~{flagged/total:.0%}) detected, but overall pattern is normal."
         return "No suspicious patterns found."
 
     z   = meter_data["zero_pct"].mean()
@@ -484,7 +470,7 @@ def detail_findings(meter_data, status):
 # PAGE HEADER
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
-<p class="page-title">⚡ Electricity Theft Detection</p>
+<p class="page-title"> Electricity Theft Detection</p>
 <p class="page-sub">Upload meter window data to scan for suspicious consumption patterns.</p>
 <hr class="page-rule">
 """, unsafe_allow_html=True)
@@ -558,19 +544,43 @@ if has_meter:
         avg_rs           = ("_rs",             "mean"),
     ).reset_index()
 
+    # ✅ FUNCTION (only logic here)
     def meter_status(row):
-        if row["high_risk_count"] > 0:  return "HIGH RISK"
-        if row["suspicious_count"] > 0: return "SUSPICIOUS"
-        return "NORMAL"
+        total = row["total_windows"]
 
+        hr = row["high_risk_count"]
+        su = row["suspicious_count"]
+
+        hr_ratio   = hr / total
+        susp_ratio = su / total
+
+    # --- HIGH RISK ---
+    # either strong direct signals OR very high suspicious concentration
+        if hr_ratio >= 0.05 or (susp_ratio >= 0.40 and su >= 50):
+            return "HIGH RISK"
+
+    # --- SUSPICIOUS ---
+        elif susp_ratio >= 0.20:
+            return "SUSPICIOUS"
+
+        else:
+            return "NORMAL"
+
+    # ✅ APPLY FUNCTION (OUTSIDE)
     ms["status"] = ms.apply(meter_status, axis=1)
+    n_high_m = (ms["status"] == "HIGH RISK").sum()
+    n_susp_m = (ms["status"] == "SUSPICIOUS").sum()
+    n_norm_m = (ms["status"] == "NORMAL").sum()
+
     ms = ms.sort_values("avg_rs", ascending=False)
 
     ms["finding"] = ms.apply(
-        lambda r: short_finding(result[result["meter_id"] == r["meter_id"]], r["status"]),
+        lambda r: short_finding(
+            result[result["meter_id"] == r["meter_id"]],
+            r["status"]
+        ),
         axis=1,
     )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SUMMARY STRIP
@@ -582,7 +592,7 @@ n_norm    = (result["risk_level"] == "NORMAL").sum()
 n_meters  = ms["meter_id"].nunique() if has_meter else "—"
 n_flagged = (ms["status"] != "NORMAL").sum() if has_meter else "—"
 
-c0, c1, c2, c3, c4 = st.columns(5)
+c0, c1, c2, c3, c4, c5 = st.columns(6)
 
 with c0:
     st.markdown(f"""<div class="card">
@@ -609,6 +619,12 @@ with c3:
     </div>""", unsafe_allow_html=True)
 
 with c4:
+    st.markdown(f"""<div class="card">
+        <p class="card-num c-green">{n_norm:,}</p>
+        <p class="card-label">Normal windows</p>
+    </div>""", unsafe_allow_html=True)
+
+with c5:
     st.markdown(f"""<div class="card">
         <p class="card-num c-slate">{n_flagged}</p>
         <p class="card-label">Meters flagged</p>
@@ -654,6 +670,32 @@ if has_meter:
 else:
     st.info("No meter_id column found — showing window-level results only.")
 
+st.markdown("### Meter-Level Insights")
+
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    st.markdown(f"""<div class="card">
+        <p class="card-num c-red">{n_high_m}</p>
+        <p class="card-label">High-Risk Meters</p>
+    </div>""", unsafe_allow_html=True)
+
+with c2:
+    st.markdown(f"""<div class="card">
+        <p class="card-num c-amber">{n_susp_m}</p>
+        <p class="card-label">Suspicious Meters</p>
+    </div>""", unsafe_allow_html=True)
+
+with c3:
+    st.markdown(f"""<div class="card">
+        <p class="card-num c-green">{n_norm_m}</p>
+        <p class="card-label">Normal Meters</p>
+    </div>""", unsafe_allow_html=True)
+
+
+st.markdown(
+    f"Out of {len(ms)} meters, {n_high_m} are high risk, {n_susp_m} require monitoring, and {n_norm_m} are operating normally."
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # METER DRILL-DOWN
@@ -860,31 +902,31 @@ else:
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DETECTION PERFORMANCE (only if ground truth present — recall only)
-# ─────────────────────────────────────────────────────────────────────────────
-if has_truth:
-    from sklearn.metrics import recall_score, confusion_matrix
+# # ─────────────────────────────────────────────────────────────────────────────
+# # DETECTION PERFORMANCE (only if ground truth present — recall only)
+# # ─────────────────────────────────────────────────────────────────────────────
+# if has_truth:
+#     from sklearn.metrics import recall_score, confusion_matrix
 
-    result["_pred"] = result["risk_level"].map({"HIGH RISK": 1, "SUSPICIOUS": 1, "NORMAL": 0})
-    y_true = result["theft"]
-    y_pred = result["_pred"]
+#     result["_pred"] = result["risk_level"].map({"HIGH RISK": 1, "SUSPICIOUS": 0, "NORMAL": 0})
+#     y_true = result["theft"]
+#     y_pred = result["_pred"]
 
-    rec    = recall_score(y_true, y_pred)
-    cm     = confusion_matrix(y_true, y_pred)
-    tn, fp, fn, tp = cm.ravel()
+#     rec    = recall_score(y_true, y_pred)
+#     cm     = confusion_matrix(y_true, y_pred)
+#     tn, fp, fn, tp = cm.ravel()
 
-    st.markdown("---")
-    st.markdown('<p class="section-label">Detection performance</p>', unsafe_allow_html=True)
+#     st.markdown("---")
+#     st.markdown('<p class="section-label">Detection performance</p>', unsafe_allow_html=True)
 
-    st.markdown(f"""
-    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;
-                padding:1.2rem 1.5rem;font-size:.9rem;color:#374151;
-                max-width:540px;line-height:1.7;">
-        The system caught <b>{tp}</b> out of <b>{int(tp+fn)}</b> confirmed theft cases
-        in this dataset — a detection rate of <b>{rec:.0%}</b>.<br>
-        <span style="color:#6b7280;font-size:.82rem;">
-            {fn} cases were missed. {fp} normal meters were flagged for review.
-        </span>
-    </div>
-    """, unsafe_allow_html=True)
+#     st.markdown(f"""
+#     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;
+#                 padding:1.2rem 1.5rem;font-size:.9rem;color:#374151;
+#                 max-width:540px;line-height:1.7;">
+#         The system caught <b>{tp}</b> out of <b>{int(tp+fn)}</b> confirmed theft cases
+#         in this dataset — a detection rate of <b>{rec:.0%}</b>.<br>
+#         <span style="color:#6b7280;font-size:.82rem;">
+#             {fn} cases were missed. {fp} normal meters were flagged for review.
+#         </span>
+#     </div>
+#     """, unsafe_allow_html=True)
