@@ -284,6 +284,36 @@ def load_models():
 # ─────────────────────────────────────────────────────────────────────────────
 # PREDICTION PIPELINE
 # ─────────────────────────────────────────────────────────────────────────────
+# def run_pipeline(df_raw, rf, xgb, iso, lof, sc, threshold):
+#     df = df_raw.copy()
+#     for c in FEATURE_COLS:
+#         if c not in df.columns:
+#             df[c] = 0
+#     X = df[FEATURE_COLS]
+
+#     rf_p  = rf.predict_proba(X)[:, 1]
+#     xgb_p = xgb.predict_proba(X)[:, 1]
+#     ens_p = (rf_p + xgb_p) / 2
+#     sup   = (ens_p >= threshold).astype(int)
+
+#     Xs    = sc.transform(X)
+#     iso_f = (iso.predict(Xs) == -1).astype(int)
+#     lof_f = (lof.predict(Xs) == -1).astype(int)
+#     anom  = ((iso_f + lof_f) >= 1).astype(int)
+
+#     labels = []
+#     for s, a in zip(sup, anom):
+#         if   s == 1 and a == 1: labels.append("HIGH RISK")
+#         elif s == 1 or  a == 1: labels.append("SUSPICIOUS")
+#         else:                   labels.append("NORMAL")
+
+#     df["fraud_prob"] = ens_p
+#     df["iso_flag"]   = iso_f
+#     df["lof_flag"]   = lof_f
+#     df["anom_flag"]  = anom
+#     df["risk_level"] = labels
+#     return df
+
 def run_pipeline(df_raw, rf, xgb, iso, lof, sc, threshold):
     df = df_raw.copy()
     for c in FEATURE_COLS:
@@ -291,29 +321,51 @@ def run_pipeline(df_raw, rf, xgb, iso, lof, sc, threshold):
             df[c] = 0
     X = df[FEATURE_COLS]
 
-    rf_p  = rf.predict_proba(X)[:, 1]
-    xgb_p = xgb.predict_proba(X)[:, 1]
-    ens_p = (rf_p + xgb_p) / 2
-    sup   = (ens_p >= threshold).astype(int)
+    # --- model signals ---
+    rf_p   = rf.predict_proba(X)[:, 1]
+    xgb_p  = xgb.predict_proba(X)[:, 1]
+    ens_p  = (rf_p + xgb_p) / 2
 
-    Xs    = sc.transform(X)
-    iso_f = (iso.predict(Xs) == -1).astype(int)
-    lof_f = (lof.predict(Xs) == -1).astype(int)
-    anom  = ((iso_f + lof_f) >= 1).astype(int)
+    Xs     = sc.transform(X)
+    iso_f  = (iso.predict(Xs) == -1).astype(int)
+    lof_f  = (lof.predict(Xs) == -1).astype(int)
 
+    # --- feature signals ---
+    zero_flag    = (X["zero_pct"]       >= 0.5).astype(int).values
+    extreme_flag = (
+        (X["max_low_streak"] >= 16) | (X["cv"] >= 4.0)
+    ).astype(int).values
+
+    # --- confidence score ---
     labels = []
-    for s, a in zip(sup, anom):
-        if   s == 1 and a == 1: labels.append("HIGH RISK")
-        elif s == 1 or  a == 1: labels.append("SUSPICIOUS")
-        else:                   labels.append("NORMAL")
+    scores = []
+    for prob, i, l, z, e in zip(ens_p, iso_f, lof_f, zero_flag, extreme_flag):
+        score = 0
+        if prob >= 0.6:
+            score += 2
+        elif prob >= 0.4:
+            score += 1
+        if i == 1 and l == 1:
+            score += 2
+        elif i == 1 or l == 1:
+            score += 1
+        score += int(z)
+        score += int(e)
+        score = min(score, 5)
+        scores.append(score)
+        if score >= 4:
+            labels.append("HIGH RISK")
+        elif score >= 2:
+            labels.append("SUSPICIOUS")
+        else:
+            labels.append("NORMAL")
 
-    df["fraud_prob"] = ens_p
-    df["iso_flag"]   = iso_f
-    df["lof_flag"]   = lof_f
-    df["anom_flag"]  = anom
-    df["risk_level"] = labels
+    df["fraud_prob"]  = ens_p
+    df["iso_flag"]    = iso_f
+    df["lof_flag"]    = lof_f
+    df["confidence"]  = scores
+    df["risk_level"]  = labels
     return df
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPER — status badge HTML
