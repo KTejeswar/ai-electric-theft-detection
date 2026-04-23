@@ -260,8 +260,7 @@ FEATURE_COLS = [
     "zero_pct", "low_pct", "max_low_streak",
 ]
 
-BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, "..", "notebooks", "models")
+MODELS_DIR = "models"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -499,9 +498,9 @@ if not uploaded:
     <div style="text-align:center;padding:3.5rem 0;color:#9ca3af;">
         <div style="font-size:2rem;margin-bottom:.6rem;">📂</div>
         <div style="font-size:.9rem;font-weight:500;color:#6b7280;">
-            Upload window_features.csv to begin</div>
+            Upload a CSV file to begin</div>
         <div style="font-size:.8rem;margin-top:.3rem;">
-            Output from the feature engineering notebook</div>
+            </div>
     </div>
     """, unsafe_allow_html=True)
     st.stop()
