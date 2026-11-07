@@ -1,7 +1,135 @@
-venv/
+# =============================================================================
+# ⚡ AI-POWERED ELECTRICITY THEFT DETECTION SYSTEM - .GITIGNORE
+# =============================================================================
+
+# ── 1. Byte-compiled / Optimized / Runtime Files ──
 __pycache__/
-.ipynb_checkpoints/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
+# ── 2. Virtual Environments ──
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+conda-env/
+
+# ── 3. Data & Heavy Datasets (Avoid GitHub 100MB File Size Limits) ──
 data/
-
 *.csv
+*.tsv
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.xlsx
+*.xls
+*.sqlite
+*.sqlite3
+*.db
+
+# Allow test CSV suites for project evaluation
+!for_testing/*.csv
+!for testing/*.csv
+
+# ── 4. Jupyter Notebooks Checkpoints ──
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# ── 5. Streamlit Local Cache & Sensitive Secrets ──
+.streamlit/secrets.toml
+.streamlit/*.token
+
+# ── 6. Environment Variables, Keys & Credentials ──
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.cert
+*.crt
+
+# ── 7. Operating System Artifacts (Windows, macOS, Linux) ──
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux
+*~
+.directory
+
+# ── 8. IDEs & Code Editors ──
+.vscode/
+!.vscode/settings.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# ── 9. Testing, Profiling & Code Coverage ──
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+htmlcov/
+
+# ── 10. Application Logs & Generated Inspection PDF Exports ──
+*.log
+logs/
+APTS_Notice_*.pdf
+APTS_Restoration_Certificate_*.pdf
+discom_inspection_orders.csv
+
+# ── 11. Temporary, Scratch & Local Runner Helpers ──
+*.bak
+*_backup.py
+*.tmp
+powershell.bat
+powershell.cmd
+0.30
