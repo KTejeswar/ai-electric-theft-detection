@@ -173,8 +173,19 @@ FEATURE_COLS = [
     "zero_pct", "low_pct", "max_low_streak",
 ]
 
-MODELS_DIR = "models"
-DATA_DEFAULT_PATH = os.path.join("data", "processed", "window_features.csv")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_DIR = os.path.join(BASE_DIR, "models") if os.path.exists(os.path.join(BASE_DIR, "models")) else "models"
+
+# Robust default telemetry dataset resolution with fallback for cloud deployment
+DATA_CANDIDATES = [
+    os.path.join(BASE_DIR, "data", "processed", "window_features.csv"),
+    os.path.join("data", "processed", "window_features.csv"),
+    os.path.join(BASE_DIR, "for_testing", "test_dataset_1_urban_feeders_60meters.csv"),
+    os.path.join("for_testing", "test_dataset_1_urban_feeders_60meters.csv"),
+    os.path.join(BASE_DIR, "for testing", "test_dataset_1_urban_feeders_60meters.csv"),
+    os.path.join("for testing", "test_dataset_1_urban_feeders_60meters.csv"),
+]
+DATA_DEFAULT_PATH = next((p for p in DATA_CANDIDATES if os.path.exists(p)), os.path.join("data", "processed", "window_features.csv"))
 TARIFF_RATE_INR = 7.20  # Standard average tariff in AP & Telangana (₹/kWh)
 
 @st.cache_resource
