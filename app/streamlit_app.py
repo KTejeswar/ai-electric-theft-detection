@@ -1237,8 +1237,8 @@ with tab_map:
             "Normal": "#10b981",
         }
         
-        fig_map = px.scatter_mapbox(
-            map_data,
+        map_kwargs = dict(
+            data_frame=map_data,
             lat="lat",
             lon="lon",
             color="meter_status",
@@ -1259,9 +1259,12 @@ with tab_map:
             },
             zoom=c_zoom,
             center={"lat": c_lat, "lon": c_lon},
-            mapbox_style="open-street-map",
             height=500,
         )
+        if hasattr(px, "scatter_map"):
+            fig_map = px.scatter_map(**map_kwargs, map_style="open-street-map")
+        else:
+            fig_map = px.scatter_mapbox(**map_kwargs, mapbox_style="open-street-map")
         fig_map.update_layout(
             margin={"r":0,"t":0,"l":0,"b":0},
             legend=dict(
